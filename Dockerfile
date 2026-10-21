@@ -14,7 +14,7 @@ COPY distribution/bin/docker-startup.sh /home/nacos/bin/docker-startup.sh
 
 RUN chmod +x /home/nacos/bin/docker-startup.sh
 
-# 暴露端口：8848 (HTTP 控制台/OpenAPI), 9848 (客户端 gRPC), 9849 (服务端 gRPC)
+# 暴露端口：8848 (HTTP 控制台/OpenAPI), 9848 (客户端 gRPC), 9849 (服务端 gRPC) hahahaha
 EXPOSE 8848 9848 9849
 
 ENTRYPOINT ["/bin/bash", "/home/nacos/bin/docker-startup.sh"]
