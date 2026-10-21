@@ -38,6 +38,13 @@ const login = user => request.post('v1/auth/users/login', user);
 const admin = user => request.post('v1/auth/users/admin', user);
 
 /**
+ * 控制台 2FA 登录接口
+ */
+const consoleLogin = user => request.post('v1/auth/console/login', user);
+const consoleMfaVerify = data => request.post('v1/auth/console/mfa/verify', data);
+const resetUserMfa = username => request.put(`v1/auth/console/mfa/reset?username=${username}`);
+
+/**
  * 单独在login处调用 获取提示信息
  */
 const guide = () => request.get('v1/console/server/guide');
@@ -135,4 +142,15 @@ export default (state = initialState, action) => {
   }
 };
 
-export { getState, login, getNotice, getGuide, guide, state, admin };
+export {
+  getState,
+  login,
+  getNotice,
+  getGuide,
+  guide,
+  state,
+  admin,
+  consoleLogin,
+  consoleMfaVerify,
+  resetUserMfa,
+};

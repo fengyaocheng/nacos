@@ -27,11 +27,14 @@ import org.springframework.context.annotation.Conditional;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static com.alibaba.nacos.plugin.auth.impl.persistence.AuthRowMapperManager.USER_ROW_MAPPER;
 
@@ -85,6 +88,7 @@ public class ExternalUserPersistServiceImpl implements UserPersistService {
         String sql = "DELETE FROM users WHERE username=?";
         try {
             jt.update(sql, username);
+            resetUserMfa(username);
         } catch (CannotGetJdbcConnectionException e) {
             LogUtil.FATAL_LOG.error("[db-error] " + e.toString(), e);
             throw e;
@@ -207,5 +211,88 @@ public class ExternalUserPersistServiceImpl implements UserPersistService {
     @Override
     public <E> AuthPaginationHelper<E> createPaginationHelper() {
         return new AuthExternalPaginationHelperImpl<>(jt, dataSourceType);
+    }
+    
+    @Override
+    public UserMfa findUserMfa(String username) {
+        String sql = "SELECT username, mfa_enabled, mfa_secret, mfa_enabled_time FROM users_mfa WHERE username = ?";
+        try {
+            return jt.queryForObject(sql, new Object[] {username}, (rs, rowNum) -> {
+                UserMfa mfa = new UserMfa();
+                mfa.setUsername(rs.getString("username"));
+                mfa.setMfaEnabled(rs.getBoolean("mfa_enabled"));
+                mfa.setMfaSecret(rs.getString("mfa_secret"));
+                mfa.setMfaEnabledTime(rs.getTimestamp("mfa_enabled_time"));
+                return mfa;
+            });
+        } catch (EmptyResultDataAccessException e) {
+            return null;
+        } catch (CannotGetJdbcConnectionException e) {
+            LogUtil.FATAL_LOG.error("[db-error] " + e.toString(), e);
+            throw e;
+        } catch (Exception e) {
+            LogUtil.DEFAULT_LOG.warn("[db-warn] query users_mfa failed or table not found: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    @Override
+    public void enableUserMfa(String username, String encryptedSecret, List<String> recoveryCodeHashes) {
+        resetUserMfa(username);
+        String insertMfaSql = "INSERT INTO users_mfa (username, mfa_enabled, mfa_secret, mfa_enabled_time) VALUES (?, ?, ?, ?)";
+        Timestamp now = new Timestamp(System.currentTimeMillis());
+        try {
+            jt.update(insertMfaSql, username, true, encryptedSecret, now);
+            if (recoveryCodeHashes != null && !recoveryCodeHashes.isEmpty()) {
+                String insertCodeSql = "INSERT INTO users_mfa_recovery_codes (username, code_hash, used) VALUES (?, ?, ?)";
+                List<Object[]> batchArgs = new ArrayList<>();
+                for (String codeHash : recoveryCodeHashes) {
+                    batchArgs.add(new Object[] {username, codeHash, false});
+                }
+                jt.batchUpdate(insertCodeSql, batchArgs);
+            }
+        } catch (CannotGetJdbcConnectionException e) {
+            LogUtil.FATAL_LOG.error("[db-error] " + e.toString(), e);
+            throw e;
+        }
+    }
+    
+    @Override
+    public void resetUserMfa(String username) {
+        String delMfa = "DELETE FROM users_mfa WHERE username = ?";
+        String delCodes = "DELETE FROM users_mfa_recovery_codes WHERE username = ?";
+        try {
+            jt.update(delMfa, username);
+            jt.update(delCodes, username);
+        } catch (CannotGetJdbcConnectionException e) {
+            LogUtil.FATAL_LOG.error("[db-error] " + e.toString(), e);
+            throw e;
+        } catch (Exception e) {
+            LogUtil.DEFAULT_LOG.warn("[db-warn] resetUserMfa failed: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public boolean verifyAndConsumeRecoveryCode(String username, String rawCode,
+            PasswordEncoder passwordEncoder) {
+        String sql = "SELECT id, code_hash FROM users_mfa_recovery_codes WHERE username = ? AND used = ?";
+        try {
+            List<Map<String, Object>> rows = jt.queryForList(sql, username, false);
+            for (Map<String, Object> row : rows) {
+                Long id = ((Number) row.get("id")).longValue();
+                String codeHash = (String) row.get("code_hash");
+                if (passwordEncoder.matches(rawCode, codeHash)) {
+                    Timestamp now = new Timestamp(System.currentTimeMillis());
+                    int updated = jt.update(
+                            "UPDATE users_mfa_recovery_codes SET used = ?, used_time = ? WHERE id = ? AND used = ?",
+                            true, now, id, false);
+                    return updated > 0;
+                }
+            }
+        } catch (CannotGetJdbcConnectionException e) {
+            LogUtil.FATAL_LOG.error("[db-error] " + e.toString(), e);
+            throw e;
+        }
+        return false;
     }
 }

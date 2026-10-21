@@ -210,6 +210,21 @@ CREATE TABLE permissions (
     constraint uk_role_permission UNIQUE (role,resource,action)
 );
 
+CREATE TABLE users_mfa (
+  username varchar(50) NOT NULL PRIMARY KEY,
+  mfa_enabled boolean NOT NULL DEFAULT false,
+  mfa_secret varchar(255),
+  mfa_enabled_time timestamp
+);
+
+CREATE TABLE users_mfa_recovery_codes (
+  id bigint NOT NULL GENERATED ALWAYS AS IDENTITY (START WITH 1, INCREMENT BY 1) PRIMARY KEY,
+  username varchar(50) NOT NULL,
+  code_hash varchar(128) NOT NULL,
+  used boolean NOT NULL DEFAULT false,
+  used_time timestamp
+);
+
 
 /******************************************/
 /*   ipv6 support   */

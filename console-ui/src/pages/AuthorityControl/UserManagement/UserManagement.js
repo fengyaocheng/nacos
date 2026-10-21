@@ -25,9 +25,11 @@ import {
   Form,
   Input,
   Switch,
+  Message,
 } from '@alifd/next';
 import { connect } from 'react-redux';
 import { getUsers, createUser, deleteUser, passwordReset } from '../../../reducers/authority';
+import { resetUserMfa } from '../../../reducers/base';
 import RegionGroup from '../../../components/RegionGroup';
 import NewUser from './NewUser';
 import PasswordReset from './PasswordReset';
@@ -203,6 +205,33 @@ class UserManagement extends React.Component {
                   }
                 >
                   {locale.deleteUser}
+                </Button>
+                &nbsp;&nbsp;&nbsp;
+                <Button
+                  type="normal"
+                  onClick={() =>
+                    Dialog.confirm({
+                      title: locale.reset2fa,
+                      content: locale.reset2faTip,
+                      onOk: () =>
+                        resetUserMfa(username)
+                          .then(() => {
+                            Message.success({ content: locale.reset2faSuccess });
+                            this.getUsers();
+                          })
+                          .catch(err => {
+                            const msg =
+                              (err &&
+                                err.response &&
+                                err.response.data &&
+                                err.response.data.message) ||
+                              'Reset 2FA failed';
+                            Message.error({ content: msg });
+                          }),
+                    })
+                  }
+                >
+                  {locale.reset2fa}
                 </Button>
               </>
             )}

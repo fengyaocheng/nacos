@@ -24,10 +24,13 @@ import com.alibaba.nacos.persistence.repository.embedded.operate.DatabaseOperate
 import com.alibaba.nacos.plugin.auth.impl.persistence.embedded.AuthEmbeddedPaginationHelperImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Conditional;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static com.alibaba.nacos.plugin.auth.impl.persistence.AuthRowMapperManager.USER_ROW_MAPPER;
 
@@ -75,6 +78,9 @@ public class EmbeddedUserPersistServiceImpl implements UserPersistService {
         String sql = "DELETE FROM users WHERE username=?";
         try {
             EmbeddedStorageContextHolder.addSqlContext(sql, username);
+            EmbeddedStorageContextHolder.addSqlContext("DELETE FROM users_mfa WHERE username=?", username);
+            EmbeddedStorageContextHolder.addSqlContext("DELETE FROM users_mfa_recovery_codes WHERE username=?",
+                    username);
             databaseOperate.blockUpdate();
         } finally {
             EmbeddedStorageContextHolder.cleanAllContext();
@@ -172,5 +178,91 @@ public class EmbeddedUserPersistServiceImpl implements UserPersistService {
     @Override
     public <E> AuthPaginationHelper<E> createPaginationHelper() {
         return new AuthEmbeddedPaginationHelperImpl<>(databaseOperate);
+    }
+    
+    @Override
+    public UserMfa findUserMfa(String username) {
+        String sql = "SELECT username, mfa_enabled, mfa_secret, mfa_enabled_time FROM users_mfa WHERE username = ?";
+        try {
+            return databaseOperate.queryOne(sql, new Object[] {username}, (rs, rowNum) -> {
+                UserMfa mfa = new UserMfa();
+                mfa.setUsername(rs.getString("username"));
+                mfa.setMfaEnabled(rs.getBoolean("mfa_enabled"));
+                mfa.setMfaSecret(rs.getString("mfa_secret"));
+                mfa.setMfaEnabledTime(rs.getTimestamp("mfa_enabled_time"));
+                return mfa;
+            });
+        } catch (Exception e) {
+            return null;
+        }
+    }
+    
+    @Override
+    public void enableUserMfa(String username, String encryptedSecret, List<String> recoveryCodeHashes) {
+        try {
+            EmbeddedStorageContextHolder.addSqlContext("DELETE FROM users_mfa WHERE username=?", username);
+            EmbeddedStorageContextHolder.addSqlContext("DELETE FROM users_mfa_recovery_codes WHERE username=?",
+                    username);
+            Timestamp now = new Timestamp(System.currentTimeMillis());
+            EmbeddedStorageContextHolder.addSqlContext(
+                    "INSERT INTO users_mfa (username, mfa_enabled, mfa_secret, mfa_enabled_time) VALUES (?, ?, ?, ?)",
+                    username, true, encryptedSecret, now);
+            if (recoveryCodeHashes != null && !recoveryCodeHashes.isEmpty()) {
+                for (String codeHash : recoveryCodeHashes) {
+                    EmbeddedStorageContextHolder.addSqlContext(
+                            "INSERT INTO users_mfa_recovery_codes (username, code_hash, used) VALUES (?, ?, ?)",
+                            username, codeHash, false);
+                }
+            }
+            databaseOperate.blockUpdate();
+        } finally {
+            EmbeddedStorageContextHolder.cleanAllContext();
+        }
+    }
+    
+    @Override
+    public void resetUserMfa(String username) {
+        try {
+            EmbeddedStorageContextHolder.addSqlContext("DELETE FROM users_mfa WHERE username=?", username);
+            EmbeddedStorageContextHolder.addSqlContext("DELETE FROM users_mfa_recovery_codes WHERE username=?",
+                    username);
+            databaseOperate.blockUpdate();
+        } finally {
+            EmbeddedStorageContextHolder.cleanAllContext();
+        }
+    }
+    
+    @Override
+    public boolean verifyAndConsumeRecoveryCode(String username, String rawCode,
+            PasswordEncoder passwordEncoder) {
+        String sql = "SELECT id, code_hash FROM users_mfa_recovery_codes WHERE username = ? AND used = false";
+        try {
+            List<Map<String, Object>> rows = databaseOperate.queryMany(sql, new Object[] {username});
+            if (rows != null) {
+                for (Map<String, Object> row : rows) {
+                    Object idObj = row.get("id") != null ? row.get("id") : row.get("ID");
+                    Object hashObj = row.get("code_hash") != null ? row.get("code_hash") : row.get("CODE_HASH");
+                    if (idObj == null || hashObj == null) {
+                        continue;
+                    }
+                    Long id = ((Number) idObj).longValue();
+                    String codeHash = (String) hashObj;
+                    if (passwordEncoder.matches(rawCode, codeHash)) {
+                        Timestamp now = new Timestamp(System.currentTimeMillis());
+                        try {
+                            EmbeddedStorageContextHolder.addSqlContext(
+                                    "UPDATE users_mfa_recovery_codes SET used = true, used_time = ? WHERE id = ? AND used = false",
+                                    now, id);
+                            return databaseOperate.blockUpdate();
+                        } finally {
+                            EmbeddedStorageContextHolder.cleanAllContext();
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // ignore
+        }
+        return false;
     }
 }

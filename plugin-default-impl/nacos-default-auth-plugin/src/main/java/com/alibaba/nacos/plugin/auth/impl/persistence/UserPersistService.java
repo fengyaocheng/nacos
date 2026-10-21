@@ -88,4 +88,39 @@ public interface UserPersistService {
      * @return {@link AuthPaginationHelper}
      */
     <E> AuthPaginationHelper<E> createPaginationHelper();
+    
+    /**
+     * 查询用户 2FA 信息.
+     *
+     * @param username 用户名
+     * @return UserMfa 实体
+     */
+    UserMfa findUserMfa(String username);
+    
+    /**
+     * 启用用户 2FA 绑定并存储加密 Secret 及恢复码哈希.
+     *
+     * @param username 用户名
+     * @param encryptedSecret 加密后的 Secret
+     * @param recoveryCodeHashes 恢复码哈希列表
+     */
+    void enableUserMfa(String username, String encryptedSecret, List<String> recoveryCodeHashes);
+    
+    /**
+     * 重置或禁用用户 2FA（删除 Secret 并清理恢复码）.
+     *
+     * @param username 用户名
+     */
+    void resetUserMfa(String username);
+    
+    /**
+     * 校验并原子消费单个恢复码.
+     *
+     * @param username 用户名
+     * @param rawCode 原始恢复码
+     * @param passwordEncoder 密码校验器
+     * @return 是否成功消费
+     */
+    boolean verifyAndConsumeRecoveryCode(String username, String rawCode,
+            org.springframework.security.crypto.password.PasswordEncoder passwordEncoder);
 }

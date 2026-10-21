@@ -39,6 +39,24 @@ const I18N_CONF = {
     invalidUsernameOrPassword: 'invalid username or password',
     productDesc:
       'an easy-to-use dynamic service discovery, configuration and service management platform for building cloud native applications',
+    mfaSetupTitle: 'Two-Factor Authentication Setup',
+    mfaSetupDesc:
+      'Please scan the QR code with your authenticator app (e.g. Google Authenticator):',
+    mfaSecretLabel: 'Manual secret key: ',
+    mfaVerifyTitle: 'Two-Factor Authentication (2FA)',
+    mfaVerifyDesc: 'Please enter the 6-digit dynamic code from your authenticator app:',
+    mfaRecoveryTitle: 'Login with Recovery Code',
+    mfaRecoveryDesc: 'Please enter an unused recovery code (format: xxxx-xxxx):',
+    useRecoveryCode: 'Use recovery code',
+    useTotpCode: 'Use authenticator code',
+    backToLogin: 'Back to login',
+    mfaCodeRequired: 'Verification code cannot be empty',
+    mfaVerifySuccess: 'Verification passed',
+    recoveryCodesTitle: 'Save Your Emergency Recovery Codes',
+    recoveryCodesDesc:
+      'Each recovery code can only be used once. Please copy and store them in a safe place:',
+    recoverySavedConfirm: 'I have saved my recovery codes',
+    copySuccess: 'Copied to clipboard',
   },
   MainLayout: {
     nacosName: 'NACOS',
@@ -591,6 +609,10 @@ const I18N_CONF = {
     resetPassword: 'Edit',
     deleteUser: 'Delete',
     deleteUserTip: 'Do you want to delete this user?',
+    reset2fa: 'Reset 2FA',
+    reset2faTip:
+      'Are you sure you want to reset 2FA for this user? The user will be required to re-bind on next login.',
+    reset2faSuccess: 'Reset 2FA successfully',
     username: 'Username',
     password: 'Password',
     operation: 'Operation',

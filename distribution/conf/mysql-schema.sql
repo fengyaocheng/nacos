@@ -208,3 +208,19 @@ CREATE TABLE `permissions` (
     UNIQUE INDEX `uk_role_permission` (`role`,`resource`,`action`) USING BTREE
 );
 
+CREATE TABLE IF NOT EXISTS `users_mfa` (
+  `username` varchar(50) NOT NULL PRIMARY KEY COMMENT 'username',
+  `mfa_enabled` tinyint(1) NOT NULL DEFAULT 0 COMMENT 'whether mfa enabled',
+  `mfa_secret` varchar(255) DEFAULT NULL COMMENT 'encrypted totp secret',
+  `mfa_enabled_time` datetime DEFAULT NULL COMMENT 'mfa enabled time'
+);
+
+CREATE TABLE IF NOT EXISTS `users_mfa_recovery_codes` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `username` varchar(50) NOT NULL,
+  `code_hash` varchar(128) NOT NULL,
+  `used` tinyint(1) NOT NULL DEFAULT 0,
+  `used_time` datetime DEFAULT NULL,
+  KEY `idx_username` (`username`)
+);
+

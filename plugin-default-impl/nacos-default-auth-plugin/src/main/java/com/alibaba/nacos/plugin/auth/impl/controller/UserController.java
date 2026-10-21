@@ -31,6 +31,7 @@ import com.alibaba.nacos.plugin.auth.exception.AccessException;
 import com.alibaba.nacos.plugin.auth.impl.authenticate.IAuthenticationManager;
 import com.alibaba.nacos.plugin.auth.impl.constant.AuthConstants;
 import com.alibaba.nacos.plugin.auth.impl.constant.AuthSystemTypes;
+import com.alibaba.nacos.plugin.auth.impl.mfa.ConsoleMfaManager;
 import com.alibaba.nacos.plugin.auth.impl.persistence.RoleInfo;
 import com.alibaba.nacos.plugin.auth.impl.persistence.User;
 import com.alibaba.nacos.plugin.auth.impl.roles.NacosRoleServiceImpl;
@@ -90,6 +91,9 @@ public class UserController {
     
     @Autowired
     private IAuthenticationManager iAuthenticationManager;
+    
+    @Autowired
+    private ConsoleMfaManager consoleMfaManager;
     
     /**
      * Create a new user.
@@ -271,6 +275,17 @@ public class UserController {
             
             NacosUser user = iAuthenticationManager.authenticate(request);
             
+            // 防绕过：已开启 2FA 的账号，调用旧接口必须携带有效的 mfaCode
+            if (consoleMfaManager.isMfaEnabled(user.getUserName())) {
+                String mfaCode = request.getParameter("mfaCode");
+                if (StringUtils.isBlank(mfaCode)) {
+                    throw new AccessException("MFA is enabled for this user. Please use console login or provide valid 'mfaCode'.");
+                }
+                if (!consoleMfaManager.verifyUserOtpDirectly(user.getUserName(), mfaCode)) {
+                    throw new AccessException("Invalid 'mfaCode'.");
+                }
+            }
+            
             response.addHeader(AuthConstants.AUTHORIZATION_HEADER, AuthConstants.TOKEN_PREFIX + user.getToken());
             
             ObjectNode result = JacksonUtils.createEmptyJsonNode();
@@ -338,5 +353,103 @@ public class UserController {
     @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "users", action = ActionTypes.WRITE)
     public List<String> searchUsersLikeUsername(@RequestParam String username) {
         return userDetailsService.findUserLikeUsername(username);
+    }
+    
+    /**
+     * 控制台首阶段登录接口.
+     *
+     * @param username 用户名
+     * @param password 密码
+     * @return 2FA 绑定或验证挑战
+     */
+    @PostMapping("/console/login")
+    public Object consoleLogin(@RequestParam String username, @RequestParam String password) {
+        if (StringUtils.isBlank(username) || StringUtils.isBlank(password)) {
+            return RestResultUtils.failed(HttpStatus.UNAUTHORIZED.value(), null, "Username and password cannot be empty");
+        }
+        
+        UserDetails userDetails;
+        try {
+            userDetails = userDetailsService.loadUserByUsername(username);
+        } catch (Exception e) {
+            return RestResultUtils.failed(HttpStatus.UNAUTHORIZED.value(), null, "Invalid username or password");
+        }
+        
+        if (userDetails == null || !PasswordEncoderUtil.matches(password, userDetails.getPassword())) {
+            return RestResultUtils.failed(HttpStatus.UNAUTHORIZED.value(), null, "Invalid username or password");
+        }
+        
+        ObjectNode result = JacksonUtils.createEmptyJsonNode();
+        result.put("username", username);
+        
+        boolean mfaEnabled = consoleMfaManager.isMfaEnabled(username);
+        if (!mfaEnabled) {
+            ConsoleMfaManager.MfaSetupResult setupResult = consoleMfaManager.createSetupChallenge(username);
+            result.put("status", "MFA_SETUP_REQUIRED");
+            result.put("challengeId", setupResult.getChallengeId());
+            result.put("secret", setupResult.getSecret());
+            result.put("qrCode", setupResult.getQrCodeBase64());
+        } else {
+            String challengeId = consoleMfaManager.createVerifyChallenge(username);
+            result.put("status", "MFA_REQUIRED");
+            result.put("challengeId", challengeId);
+        }
+        return result;
+    }
+    
+    /**
+     * 控制台二阶段 MFA 验证接口.
+     *
+     * @param challengeId 挑战 ID
+     * @param code 动态码或恢复码
+     * @param isRecoveryCode 是否为恢复码
+     * @param response HTTP 响应
+     * @return 登录结果与 Token
+     */
+    @PostMapping("/console/mfa/verify")
+    public Object consoleMfaVerify(@RequestParam String challengeId, @RequestParam String code,
+            @RequestParam(name = "isRecoveryCode", required = false, defaultValue = "false") boolean isRecoveryCode,
+            HttpServletResponse response) {
+        try {
+            ConsoleMfaManager.MfaVerifyResult verifyResult = consoleMfaManager.verifyAndComplete(challengeId, code,
+                    isRecoveryCode);
+            String username = verifyResult.getUsername();
+            String token = jwtTokenManager.createToken(username);
+            
+            response.addHeader(AuthConstants.AUTHORIZATION_HEADER, AuthConstants.TOKEN_PREFIX + token);
+            
+            ObjectNode result = JacksonUtils.createEmptyJsonNode();
+            result.put("status", "SUCCESS");
+            result.put(Constants.ACCESS_TOKEN, token);
+            result.put(Constants.TOKEN_TTL, jwtTokenManager.getTokenTtlInSeconds(token));
+            result.put(Constants.GLOBAL_ADMIN, roleService.hasGlobalAdminRole(username));
+            result.put(Constants.USERNAME, username);
+            
+            if (verifyResult.getRecoveryCodes() != null && !verifyResult.getRecoveryCodes().isEmpty()) {
+                com.fasterxml.jackson.databind.node.ArrayNode arrayNode = result.putArray("recoveryCodes");
+                for (String rc : verifyResult.getRecoveryCodes()) {
+                    arrayNode.add(rc);
+                }
+            }
+            return result;
+        } catch (AccessException e) {
+            return RestResultUtils.failed(HttpStatus.UNAUTHORIZED.value(), null, e.getErrMsg());
+        } catch (Exception e) {
+            return RestResultUtils.failed(HttpStatus.INTERNAL_SERVER_ERROR.value(), null,
+                    "MFA verify failed: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 管理员重置用户的 2FA 绑定.
+     *
+     * @param username 目标用户名
+     * @return 成功信息
+     */
+    @PutMapping("/console/mfa/reset")
+    @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "users", action = ActionTypes.WRITE)
+    public Object resetUserMfa(@RequestParam String username) {
+        consoleMfaManager.resetMfa(username);
+        return RestResultUtils.success("Reset 2FA successfully for user: " + username);
     }
 }
