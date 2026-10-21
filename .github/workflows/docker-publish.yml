@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - '2.4.3'
+      - develop
       - main
       - master
     tags:
