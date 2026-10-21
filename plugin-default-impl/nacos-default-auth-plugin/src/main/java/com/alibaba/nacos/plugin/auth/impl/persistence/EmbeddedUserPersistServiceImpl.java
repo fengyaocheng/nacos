@@ -149,6 +149,7 @@ public class EmbeddedUserPersistServiceImpl implements UserPersistService {
         
         StringBuilder where = new StringBuilder(" WHERE 1 = 1 ");
         List<String> params = new ArrayList<>();
+        
         if (StringUtils.isNotBlank(username)) {
             where.append(" AND username LIKE ? ");
             where.append(SQL_DERBY_ESCAPE_BACK_SLASH_FOR_LIKE);
@@ -166,6 +167,7 @@ public class EmbeddedUserPersistServiceImpl implements UserPersistService {
         if (s.contains(underscore)) {
             s = s.replaceAll(underscore, "\\\\_");
         }
+
         String fuzzySearchSign = "\\*";
         String sqlLikePercentSign = "%";
         if (s.contains(PATTERN_STR)) {
