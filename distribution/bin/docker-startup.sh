@@ -68,7 +68,7 @@ nacos.core.auth.server.identity.value=${AUTH_ID_VAL}
 EOF
 
 # JVM 与启动参数配置（前台执行）
-JAVA_OPT="-Xms${JVM_XMS} -Xmx${JVM_XMX} -Xmn${JVM_XMN}"
+JAVA_OPT="-Xms${JVM_XMS} -Xmx${JVM_XMX} -Xmn${JVM_XMN} -Djava.awt.headless=true"
 if [ "${MODE}" = "standalone" ]; then
     JAVA_OPT="${JAVA_OPT} -Dnacos.standalone=true"
 fi

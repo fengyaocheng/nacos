@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 
-FROM openjdk:8-jre-slim
+FROM eclipse-temurin:8-jre
 
 LABEL maintainer="nacos-2fa"
 
