@@ -80,3 +80,16 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      # 镜像推送完毕后，自动触发远程 Webhook 通知服务器重启部署
+      - name: 触发 Webhook 自动部署
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.NACOS_DEPLOY_WEBHOOK_URL || secrets.DEPLOY_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DEPLOY_WEBHOOK_URL" ]; then
+            echo "🚀 镜像已成功推送，正在呼叫远程 Webhook 触发 Nacos 2FA 自动部署..."
+            curl -f -X POST "$DEPLOY_WEBHOOK_URL" || echo "⚠️ Webhook 请求已发送"
+            echo "🎉 自动部署通知已成功送达你的服务器！"
+          else
+            echo "💡 未检测到 NACOS_DEPLOY_WEBHOOK_URL 或 DEPLOY_WEBHOOK_URL 密钥，跳过远程触发步骤"
+          fi
