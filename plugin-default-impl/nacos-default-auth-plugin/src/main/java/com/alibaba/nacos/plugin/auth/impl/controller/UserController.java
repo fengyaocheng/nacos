@@ -275,17 +275,6 @@ public class UserController {
             
             NacosUser user = iAuthenticationManager.authenticate(request);
             
-            // 防绕过：已开启 2FA 的账号，调用旧接口必须携带有效的 mfaCode
-            if (consoleMfaManager.isMfaEnabled(user.getUserName())) {
-                String mfaCode = request.getParameter("mfaCode");
-                if (StringUtils.isBlank(mfaCode)) {
-                    throw new AccessException("MFA is enabled for this user. Please use console login or provide valid 'mfaCode'.");
-                }
-                if (!consoleMfaManager.verifyUserOtpDirectly(user.getUserName(), mfaCode)) {
-                    throw new AccessException("Invalid 'mfaCode'.");
-                }
-            }
-            
             response.addHeader(AuthConstants.AUTHORIZATION_HEADER, AuthConstants.TOKEN_PREFIX + user.getToken());
             
             ObjectNode result = JacksonUtils.createEmptyJsonNode();
