@@ -965,6 +965,10 @@
                         <artifactId>bolt</artifactId>
                     </exclusion>
                     <exclusion>
+                        <groupId>com.alipay.sofa</groupId>
+                        <artifactId>hessian</artifactId>
+                    </exclusion>
+                    <exclusion>
                         <groupId>org.apache.logging.log4j</groupId>
                         <artifactId>log4j-api</artifactId>
                     </exclusion>

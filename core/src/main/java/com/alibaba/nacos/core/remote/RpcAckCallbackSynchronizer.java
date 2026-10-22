@@ -20,7 +20,8 @@ import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.api.remote.DefaultRequestFuture;
 import com.alibaba.nacos.api.remote.response.Response;
 import com.alibaba.nacos.core.utils.Loggers;
-import com.alipay.hessian.clhm.ConcurrentLinkedHashMap;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -34,11 +35,18 @@ import java.util.concurrent.TimeoutException;
  */
 public class RpcAckCallbackSynchronizer {
     
-    @SuppressWarnings("checkstyle:linelength")
-    public static final Map<String, Map<String, DefaultRequestFuture>> CALLBACK_CONTEXT = new ConcurrentLinkedHashMap.Builder<String, Map<String, DefaultRequestFuture>>()
-            .maximumWeightedCapacity(1000000)
-            .listener((s, pushCallBack) -> pushCallBack.entrySet().forEach(
-                stringDefaultPushFutureEntry -> stringDefaultPushFutureEntry.getValue().setFailResult(new TimeoutException()))).build();
+    private static final Cache<String, Map<String, DefaultRequestFuture>> CALLBACK_CACHE = CacheBuilder.newBuilder()
+            .maximumSize(1000000)
+            .<String, Map<String, DefaultRequestFuture>>removalListener(notification -> {
+                Map<String, DefaultRequestFuture> value = notification.getValue();
+                if (notification.wasEvicted() && value != null) {
+                    value.values().forEach(
+                            future -> future.setFailResult(new TimeoutException()));
+                }
+            })
+            .build();
+    
+    public static final Map<String, Map<String, DefaultRequestFuture>> CALLBACK_CONTEXT = CALLBACK_CACHE.asMap();
     
     /**
      * notify  ack.
